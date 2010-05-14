@@ -1,0 +1,11 @@
+Name: bson
+Version: 0.0.0
+Synopsis: BSON documents are JSON-like objects with a standard binary encoding defined at bsonspec.org. This implements version 1.0 of that spec.
+Description: 
+Category: Data
+License: BSD
+Author: Tony Hannan
+Maintainer: Tony Hannan <tony@10gen.com>
+Build-Depends: base, time, bytestring, unix, network, nano-md5, binary, data-binary-ieee754, compact-string
+Build-Type: Simple
+Exposed-modules: Data.Bson, Data.Bson.ObjectId, Data.Bson.Binary
