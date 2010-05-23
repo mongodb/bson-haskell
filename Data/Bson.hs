@@ -27,7 +27,7 @@ import Data.List (find)
 import Data.Bits (shift, (.|.))
 import Data.ByteString.Char8 (ByteString, pack)
 import Data.Digest.OpenSSL.MD5 (md5sum)
-import Numeric (readHex)
+import Numeric (readHex, showHex)
 import Network.BSD (getHostName)
 import System.Posix.Process (getProcessID)
 import System.IO.Unsafe (unsafePerformIO)
@@ -302,8 +302,11 @@ data MinMaxKey = MinKey | MaxKey  deriving (Typeable, Show, Read, Eq)
 
 -- * ObjectId
 
-data ObjectId = Oid Word32 Word64  deriving (Typeable, Show, Read, Eq, Ord)
+data ObjectId = Oid Word32 Word64  deriving (Typeable, Eq, Ord)
 -- ^ A BSON ObjectID is a 12-byte value consisting of a 4-byte timestamp (seconds since epoch), a 3-byte machine id, a 2-byte process id, and a 3-byte counter. Note that the timestamp and counter fields must be stored big endian unlike the rest of BSON. This is because they are compared byte-by-byte and we want to ensure a mostly increasing order.
+
+instance Show ObjectId where
+	showsPrec d (Oid x y) = showParen (d > 10) $ showString "Oid " . showHex x . showChar ' ' . showHex y
 
 timestamp :: ObjectId -> UTCTime
 timestamp (Oid time _) = posixSecondsToUTCTime (fromIntegral time)
