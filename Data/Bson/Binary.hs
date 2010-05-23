@@ -22,6 +22,7 @@ import qualified Data.CompactString.UTF8 as U
 import Data.Time.Clock (UTCTime)
 import Data.Time.Clock.POSIX
 import Control.Applicative ((<$>), (<*>))
+import Control.Monad (when)
 
 encodeDoc :: Document -> L.ByteString
 -- ^ Binary representation of document
@@ -138,13 +139,13 @@ getString = do
 
 putDocument :: Document -> Put
 putDocument es = let b = runPut (mapM_ putElement es) in do
-	putInt32 $ (toEnum . fromEnum) (L.length b + 1)
+	putInt32 $ (toEnum . fromEnum) (L.length b + 5)  -- include length and null terminator
 	putLazyByteString b
 	putWord8 0
 
 getDocument :: Get Document
 getDocument = do
-	len <- subtract 1 <$> getInt32
+	len <- subtract 5 <$> getInt32
 	b <- getLazyByteString (fromIntegral len)
 	getWord8
 	return (runGet getElements b)
@@ -163,16 +164,20 @@ getArray = map value <$> getDocument
 type Subtype = Word8
 
 putBinary :: Subtype -> ByteString -> Put
-putBinary t x = do
-	putInt32 $ toEnum (length x)
+-- When Binary subtype (0x02) insert extra length field before bytes
+putBinary t x = let len = toEnum (length x) in do
+	putInt32 $ len + if t == 0x02 then 4 else 0
 	putTag t
+	when (t == 0x02) (putInt32 len)
 	putByteString x
 
 getBinary :: Get (Subtype, ByteString)
+-- When Binary subtype (0x02) there is an extra length field before bytes
 getBinary = do
 	len <- getInt32
 	t <- getTag
-	x <- getByteString (fromIntegral len)
+	len' <- if t == 0x02 then getInt32 else return len
+	x <- getByteString (fromIntegral len')
 	return (t, x)
 
 putRegex (Regex x y) = putCString x >> putCString y
@@ -200,7 +205,7 @@ getUTC = posixSecondsToUTCTime . (/ 1000) . fromIntegral <$> getInt64
 
 putClosure :: UString -> Document -> Put
 putClosure x y = let b = runPut (putString x >> putDocument y) in do
-	putInt32 $ (toEnum . fromEnum) (L.length b)
+	putInt32 $ (toEnum . fromEnum) (L.length b + 4)  -- including this length field
 	putLazyByteString b
 
 getClosure :: Get (UString, Document)
