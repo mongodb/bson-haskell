@@ -1,29 +1,35 @@
--- | A BSON document is a JSON-like object with a standard binary encoding defined at bsonspec.org. This implements version 1.0 of that spec.
--- Use the GHC language extension "OverloadedStrings" to automatically convert String literals to UString (UTF8)
+{- | A BSON document is a JSON-like object with a standard binary encoding defined at bsonspec.org. This implements version 1.0 of that spec.
 
-{-# LANGUAGE OverloadedStrings, TypeSynonymInstances, DeriveDataTypeable, RankNTypes, OverlappingInstances, IncoherentInstances #-}
+Use the GHC language extension /OverloadedStrings/ to automatically convert String literals to UString (UTF8) -}
+
+{-# LANGUAGE OverloadedStrings, TypeSynonymInstances, FlexibleInstances, DeriveDataTypeable, RankNTypes, OverlappingInstances, IncoherentInstances, ScopedTypeVariables #-}
 
 module Data.Bson (
 	UString,
-	Document, Element(..), (=:), look, lookup,
+	-- * Document
+	Document, look, lookup, valueAt, at, include, exclude, merge,
+	-- ** Element
+	Element(..), (=:), (=?),
 	Label,
-	Value(..), Val(..), fval,
-	Array,
-	Function(..), Binary(..), UUID(..), MD5(..), UserDefined(..),
+	-- * Value
+	Value(..), Val(..), fval, cast, typed,
+	-- * Special Bson types
+	Binary(..), Function(..), UUID(..), MD5(..), UserDefined(..),
 	Regex(..), Javascript(..), Symbol(..), MongoStamp(..), MinMaxKey(..),
+	-- ** ObjectId
 	ObjectId(..), timestamp, genObjectId
 ) where
 
 import Prelude hiding (lookup)
 import Control.Applicative ((<$>), (<*>))
-import Data.Typeable
+import Data.Typeable hiding (cast)
 import Data.Int
 import Data.Word
 import Data.UString (UString, u, unpack)
 import Data.Time.Clock (UTCTime)
 import Data.Time.Clock.POSIX
 import Data.Time.Format ()  -- for Show and Read instances of UTCTime
-import Data.List (find)
+import Data.List (find, findIndex)
 import Data.Bits (shift, (.|.))
 import Data.ByteString.Char8 (ByteString, pack)
 import Data.Digest.OpenSSL.MD5 (md5sum)
@@ -32,6 +38,8 @@ import Network.BSD (getHostName)
 import System.Posix.Process (getProcessID)
 import System.IO.Unsafe (unsafePerformIO)
 import Data.IORef
+import Data.Maybe (maybeToList, mapMaybe)
+import Control.Monad.Identity
 
 roundTo :: (RealFrac a) => a -> a -> a
 -- ^ Round second number to nearest multiple of first number. Eg: roundTo (1/1000) 0.12345 = 0.123
@@ -40,36 +48,72 @@ roundTo mult n = fromIntegral (round (n / mult)) * mult
 -- * Document
 
 type Document = [Element]
+-- ^ A BSON document is a sequence of 'Element's
 
-look :: Label -> Document -> Maybe Value
--- ^ Value of field in document, or Nothing if field not found
-look k doc = value <$> find ((k ==) . label) doc
+look :: (Monad m) => Label -> Document -> m Value
+-- ^ Value of field in document, or fail (Nothing) if field not found
+look k doc = maybe notFound (return . value) (find ((k ==) . label) doc) where
+	notFound = fail $ "expected " ++ show k ++ " in " ++ show doc
 
-lookup :: (Val v) => Label -> Document -> Maybe v
--- ^ Lookup field in document and cast to expected type. Nothing if field not found or value not of expected type.
-lookup k doc = typed =<< look k doc
+lookup :: (Val v, Monad m) => Label -> Document -> m v
+-- ^ Lookup field in document and cast to expected type. Fail (Nothing) if field not found or value not of expected type.
+lookup k doc = cast =<< look k doc
 
-infix 0 :=, =:
+valueAt :: Label -> Document -> Value
+-- ^ Value of field in document. Error if missing.
+valueAt k = runIdentity . look k
+
+at :: forall v. (Val v) => Label -> Document -> v
+-- ^ Typed value of field in document. Error if missing or wrong type.
+at k doc = maybe err id (lookup k doc)  where
+	err = error $ "expected (" ++ show k ++ " :: " ++ show (typeOf (undefined :: v)) ++ ") in " ++ show doc
+
+include :: [Label] -> Document -> Document
+-- ^ Only include elements of document in key list
+include keys doc = mapMaybe (\k -> find ((k ==) . label) doc) keys
+
+exclude :: [Label] -> Document -> Document
+-- ^ Exclude elements from document in key list
+exclude keys doc = filter (\(k := _) -> notElem k keys) doc
+
+merge :: Document -> Document -> Document
+-- ^ Merge documents with preference given to first one when both have the same label. I.e. for every (k := v) in first argument, if k exists in second argument then replace its value with v, otherwise add (k := v) to second argument
+merge es doc = foldl f doc es where
+	f doc (k := v) = case findIndex ((k ==) . label) doc of
+		Nothing -> doc ++ [k := v]
+		Just i -> let (x, _ : y) = splitAt i doc in x ++ [k := v] ++ y
+
+-- * Element
+
+infix 0 :=, =:, =?
 
 data Element = (:=) {label :: Label, value :: Value}  deriving (Typeable, Eq)
+-- ^ A BSON element is a named value, where the name is a string and the value is a BSON 'Value'
 
 (=:) :: (Val v) => Label -> v -> Element
+-- ^ Element with given label and typed value
 k =: v = k := val v
+
+(=?) :: (Val a) => Label -> Maybe a -> [Element]
+-- ^ If Just then return one element list with given label, otherwise return empty list
+k =? ma = maybeToList (fmap (k =:) ma)
 
 instance Show Element where
 	showsPrec d (k := v) = showParen (d > 0) $ showString (' ' : unpack k) . showString ": " . showsPrec 1 v
 
 type Label = UString
+-- ^ The name of a BSON element/field
 
 -- * Value
 
+-- | A BSON value is one of the following types of values
 data Value =
 	Float Double |
 	String UString |
 	Doc Document |
-	Array Array |
-	Fun Function |
+	Array [Value] |
 	Bin Binary |
+	Fun Function |
 	Uuid UUID |
 	Md5 MD5 |
 	UserDef UserDefined |
@@ -86,14 +130,18 @@ data Value =
 	MinMax MinMaxKey
 	deriving (Typeable, Eq)
 
+instance Show Value where
+	showsPrec d v = fval (showsPrec d) v
+
 fval :: (forall a . (Val a) => a -> b) -> Value -> b
+-- ^ Apply generic function to typed value
 fval f v = case v of
 	Float x -> f x
 	String x -> f x
 	Doc x -> f x
 	Array x -> f x
-	Fun x -> f x
 	Bin x -> f x
+	Fun x -> f x
 	Uuid x -> f x
 	Md5 x -> f x
 	UserDef x -> f x
@@ -109,170 +157,182 @@ fval f v = case v of
 	Stamp x -> f x
 	MinMax x -> f x
 
-instance Show Value where
-	showsPrec d v = fval (showsPrec d) v
+-- * Value conversion
 
-type Array = [Value]
+cast :: forall m a. (Val a, Monad m) => Value -> m a
+-- ^ Convert Value to expected type, or fail (Nothing) if not of that type
+cast v = maybe notType return (cast' v) where
+	notType = fail $ "expected " ++ show (typeOf (undefined :: a)) ++ ": " ++ show v
+
+typed :: (Val a) => Value -> a
+-- ^ Convert Value to expected type. Error if not that type.
+typed = runIdentity . cast
+
+-- ** conversion class
 
 -- | Haskell types of this class correspond to BSON value types
 class (Typeable a, Show a, Eq a) => Val a where
 	val :: a -> Value
-	typed :: Value -> Maybe a
+	cast' :: Value -> Maybe a
 
 instance Val Double where
 	val = Float
-	typed (Float x) = Just x
-	typed (Int32 x) = Just (fromIntegral x)
-	typed (Int64 x) = Just (fromIntegral x)
-	typed _ = Nothing
+	cast' (Float x) = Just x
+	cast' (Int32 x) = Just (fromIntegral x)
+	cast' (Int64 x) = Just (fromIntegral x)
+	cast' _ = Nothing
 
 instance Val Float where
 	val = Float . realToFrac
-	typed (Float x) = Just (realToFrac x)
-	typed (Int32 x) = Just (fromIntegral x)
-	typed (Int64 x) = Just (fromIntegral x)
-	typed _ = Nothing
+	cast' (Float x) = Just (realToFrac x)
+	cast' (Int32 x) = Just (fromIntegral x)
+	cast' (Int64 x) = Just (fromIntegral x)
+	cast' _ = Nothing
 
 instance Val UString where
 	val = String
-	typed (String x) = Just x
-	typed (Sym (Symbol x)) = Just x
-	typed _ = Nothing
+	cast' (String x) = Just x
+	cast' (Sym (Symbol x)) = Just x
+	cast' _ = Nothing
 
 instance Val String where
 	val = String . u
-	typed (String x) = Just (unpack x)
-	typed (Sym (Symbol x)) = Just (unpack x)
-	typed _ = Nothing
+	cast' (String x) = Just (unpack x)
+	cast' (Sym (Symbol x)) = Just (unpack x)
+	cast' _ = Nothing
 
 instance Val Document where
 	val = Doc
-	typed (Doc x) = Just x
-	typed _ = Nothing
+	cast' (Doc x) = Just x
+	cast' _ = Nothing
 
-instance Val Array where
+instance Val [Value] where
 	val = Array
-	typed (Array x) = Just x
-	typed _ = Nothing
+	cast' (Array x) = Just x
+	cast' _ = Nothing
 
 instance (Val a) => Val [a] where
 	val = Array . map val
-	typed (Array x) = mapM typed x
-	typed _ = Nothing
-
-instance Val Function where
-	val = Fun
-	typed (Fun x) = Just x
-	typed _ = Nothing
+	cast' (Array x) = mapM cast x
+	cast' _ = Nothing
 
 instance Val Binary where
 	val = Bin
-	typed (Bin x) = Just x
-	typed _ = Nothing
+	cast' (Bin x) = Just x
+	cast' _ = Nothing
+
+instance Val Function where
+	val = Fun
+	cast' (Fun x) = Just x
+	cast' _ = Nothing
 
 instance Val UUID where
 	val = Uuid
-	typed (Uuid x) = Just x
-	typed _ = Nothing
+	cast' (Uuid x) = Just x
+	cast' _ = Nothing
 
 instance Val MD5 where
 	val = Md5
-	typed (Md5 x) = Just x
-	typed _ = Nothing
+	cast' (Md5 x) = Just x
+	cast' _ = Nothing
 
 instance Val UserDefined where
 	val = UserDef
-	typed (UserDef x) = Just x
-	typed _ = Nothing
+	cast' (UserDef x) = Just x
+	cast' _ = Nothing
 
 instance Val ObjectId where
 	val = ObjId
-	typed (ObjId x) = Just x
-	typed _ = Nothing
+	cast' (ObjId x) = Just x
+	cast' _ = Nothing
 
 instance Val Bool where
 	val = Bool
-	typed (Bool x) = Just x
-	typed _ = Nothing
+	cast' (Bool x) = Just x
+	cast' _ = Nothing
 
 instance Val UTCTime where
 	val = UTC . posixSecondsToUTCTime . roundTo (1/1000) . utcTimeToPOSIXSeconds
-	typed (UTC x) = Just x
-	typed _ = Nothing
+	cast' (UTC x) = Just x
+	cast' _ = Nothing
 
 instance Val POSIXTime where
 	val = UTC . posixSecondsToUTCTime . roundTo (1/1000)
-	typed (UTC x) = Just (utcTimeToPOSIXSeconds x)
-	typed _ = Nothing
+	cast' (UTC x) = Just (utcTimeToPOSIXSeconds x)
+	cast' _ = Nothing
 
 instance Val () where
 	val () = Null
-	typed Null = Just ()
-	typed _ = Nothing
+	cast' Null = Just ()
+	cast' _ = Nothing
 
 instance Val Regex where
 	val = RegEx
-	typed (RegEx x) = Just x
-	typed _ = Nothing
+	cast' (RegEx x) = Just x
+	cast' _ = Nothing
 
 instance Val Javascript where
 	val = JavaScr
-	typed (JavaScr x) = Just x
-	typed _ = Nothing
+	cast' (JavaScr x) = Just x
+	cast' _ = Nothing
 
 instance Val Symbol where
 	val = Sym
-	typed (Sym x) = Just x
-	typed (String x) = Just (Symbol x)
-	typed _ = Nothing
+	cast' (Sym x) = Just x
+	cast' (String x) = Just (Symbol x)
+	cast' _ = Nothing
 
 instance Val Int32 where
 	val = Int32
-	typed (Int32 x) = Just x
-	typed (Int64 x) = Just (fromIntegral x)
-	typed (Float x) = Just (round x)
-	typed _ = Nothing
+	cast' (Int32 x) = Just x
+	cast' (Int64 x) = mInt32 x
+	cast' (Float x) = Just (round x)
+	cast' _ = Nothing
 
 instance Val Int64 where
 	val = Int64
-	typed (Int64 x) = Just x
-	typed (Int32 x) = Just (fromIntegral x)
-	typed (Float x) = Just (round x)
-	typed _ = Nothing
+	cast' (Int64 x) = Just x
+	cast' (Int32 x) = Just (fromIntegral x)
+	cast' (Float x) = Just (round x)
+	cast' _ = Nothing
 
 instance Val Int where
-	val n = if fromIntegral (minBound :: Int32) <= n && n <= fromIntegral (maxBound :: Int32)
-		then Int32 (fromIntegral n)
-		else Int64 (fromIntegral n)
-	typed (Int32 x) = Just (fromIntegral x)
-	typed (Int64 x) = Just (fromIntegral x)
-	typed (Float x) = Just (round x)
-	typed _ = Nothing
+	val n = maybe (Int64 $ fromIntegral n) Int32 (mInt32 n)
+	cast' (Int32 x) = Just (fromIntegral x)
+	cast' (Int64 x) = Just (fromEnum x)
+	cast' (Float x) = Just (round x)
+	cast' _ = Nothing
 
 instance Val Integer where
-	val n = if fromIntegral (minBound :: Int32) <= n && n <= fromIntegral (maxBound :: Int32)
-		then Int32 (fromIntegral n)
-		else Int64 (fromIntegral n)
-	typed (Int32 x) = Just (fromIntegral x)
-	typed (Int64 x) = Just (fromIntegral x)
-	typed (Float x) = Just (round x)
-	typed _ = Nothing
+	val n = maybe (Int64 . toEnum . fromEnum $ n) Int32 (mInt32 n)
+	cast' (Int32 x) = Just (fromIntegral x)
+	cast' (Int64 x) = Just (fromIntegral x)
+	cast' (Float x) = Just (round x)
+	cast' _ = Nothing
 
 instance Val MongoStamp where
 	val = Stamp
-	typed (Stamp x) = Just x
-	typed _ = Nothing
+	cast' (Stamp x) = Just x
+	cast' _ = Nothing
 
 instance Val MinMaxKey where
 	val = MinMax
-	typed (MinMax x) = Just x
-	typed _ = Nothing
+	cast' (MinMax x) = Just x
+	cast' _ = Nothing
 
--- * Binary types
+mInt32 :: (Integral n) => n -> Maybe Int32
+-- ^ If number fits in 32 bits then cast to Int32, otherwise Nothing
+mInt32 n = if fromIntegral (minBound :: Int32) <= n && n <= fromIntegral (maxBound :: Int32)
+	then Just (fromIntegral n)
+	else Nothing
 
-newtype Function = Function ByteString  deriving (Typeable, Show, Read, Eq)
+-- * Haskell types corresponding to special Bson value types
+
+-- ** Binary types
 
 newtype Binary = Binary ByteString  deriving (Typeable, Show, Read, Eq)
+
+newtype Function = Function ByteString  deriving (Typeable, Show, Read, Eq)
 
 newtype UUID = UUID ByteString  deriving (Typeable, Show, Read, Eq)
 
@@ -280,27 +340,28 @@ newtype MD5 = MD5 ByteString  deriving (Typeable, Show, Read, Eq)
 
 newtype UserDefined = UserDefined ByteString  deriving (Typeable, Show, Read, Eq)
 
--- * Regex
+-- ** Regex
 
 data Regex = Regex UString UString  deriving (Typeable, Show, Read, Eq)
 
--- * Javascript
+-- ** Javascript
 
-data Javascript = Javascript UString (Maybe Document)  deriving (Typeable, Show, Eq)
+data Javascript = Javascript Document UString deriving (Typeable, Show, Eq)
+-- ^ Javascript code with possibly empty environment mapping variables to values that the code may reference
 
--- * Symbol
+-- ** Symbol
 
 newtype Symbol = Symbol UString  deriving (Typeable, Show, Read, Eq)
 
--- * MongoStamp
+-- ** MongoStamp
 
 newtype MongoStamp = MongoStamp Int64  deriving (Typeable, Show, Read, Eq)
 
--- * MinMax
+-- ** MinMax
 
 data MinMaxKey = MinKey | MaxKey  deriving (Typeable, Show, Read, Eq)
 
--- * ObjectId
+-- ** ObjectId
 
 data ObjectId = Oid Word32 Word64  deriving (Typeable, Eq, Ord)
 -- ^ A BSON ObjectID is a 12-byte value consisting of a 4-byte timestamp (seconds since epoch), a 3-byte machine id, a 2-byte process id, and a 3-byte counter. Note that the timestamp and counter fields must be stored big endian unlike the rest of BSON. This is because they are compared byte-by-byte and we want to ensure a mostly increasing order.
@@ -309,6 +370,7 @@ instance Show ObjectId where
 	showsPrec d (Oid x y) = showParen (d > 10) $ showString "Oid " . showHex x . showChar ' ' . showHex y
 
 timestamp :: ObjectId -> UTCTime
+-- ^ Time when objectId was created
 timestamp (Oid time _) = posixSecondsToUTCTime (fromIntegral time)
 
 genObjectId :: IO ObjectId
@@ -335,3 +397,8 @@ type Word24 = Word32
 
 wrap24 :: Word24 -> Word24
 wrap24 n = n `mod` 0x1000000
+
+
+{- Authors: Tony Hannan <tony@10gen.com>
+   Copyright 2010 10gen Inc.
+   Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at: http://www.apache.org/licenses/LICENSE-2.0. Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License. -}

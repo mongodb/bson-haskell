@@ -1,7 +1,6 @@
 -- | Standard binary encoding of BSON documents, version 1.0. See bsonspec.org
 
 module Data.Bson.Binary (
-	encodeDoc, decodeDoc,
 	putDocument, getDocument,
 	putDouble, getDouble,
 	putInt32, getInt32,
@@ -24,14 +23,6 @@ import Data.Time.Clock.POSIX
 import Control.Applicative ((<$>), (<*>))
 import Control.Monad (when)
 
-encodeDoc :: Document -> L.ByteString
--- ^ Binary representation of document
-encodeDoc doc = runPut (putDocument doc)
-
-decodeDoc :: L.ByteString -> Document
--- ^ Haskell representation of binary BSON document
-decodeDoc bytes = runGet getDocument bytes
-
 putElement :: Element -> Put
 -- ^ Write binary representation of element
 putElement (k := v) = case v of
@@ -39,19 +30,19 @@ putElement (k := v) = case v of
 	String x -> putTL 0x02 >> putString x
 	Doc x -> putTL 0x03 >> putDocument x
 	Array x -> putTL 0x04 >> putArray x
+	Bin (Binary x) -> putTL 0x05 >> putBinary 0x00 x
 	Fun (Function x) -> putTL 0x05 >> putBinary 0x01 x
-	Bin (Binary x) -> putTL 0x05 >> putBinary 0x02 x
 	Uuid (UUID x) -> putTL 0x05 >> putBinary 0x03 x
 	Md5 (MD5 x) -> putTL 0x05 >> putBinary 0x05 x
-	UserDef (UserDefined x) -> putTL 0x05 >> putBinary 0x08 x
+	UserDef (UserDefined x) -> putTL 0x05 >> putBinary 0x80 x
 	ObjId x -> putTL 0x07 >> putObjectId x
 	Bool x -> putTL 0x08 >> putBool x
 	UTC x -> putTL 0x09 >> putUTC x
 	Null -> putTL 0x0A
 	RegEx x -> putTL 0x0B >> putRegex x
-	JavaScr (Javascript x my) -> case my of
-		Nothing -> putTL 0x0D >> putString x
-		Just y -> putTL 0x0F >> putClosure x y
+	JavaScr (Javascript env code) -> if null env
+		then putTL 0x0D >> putString code
+		else putTL 0x0F >> putClosure code env
 	Sym x -> putTL 0x0E >> putSymbol x
 	Int32 x -> putTL 0x10 >> putInt32 x
 	Int64 x -> putTL 0x12 >> putInt64 x
@@ -73,8 +64,8 @@ getElement = do
 		0x03 -> Doc <$> getDocument
 		0x04 -> Array <$> getArray
 		0x05 -> getBinary >>= \(s, b) -> case s of
+			0x00 -> return $ Bin (Binary b)
 			0x01 -> return $ Fun (Function b)
-			0x02 -> return $ Bin (Binary b)
 			0x03 -> return $ Uuid (UUID b)
 			0x05 -> return $ Md5 (MD5 b)
 			0x80 -> return $ UserDef (UserDefined b)
@@ -84,8 +75,8 @@ getElement = do
 		0x09 -> UTC <$> getUTC
 		0x0A -> return Null
 		0x0B -> RegEx <$> getRegex
-		0x0D -> JavaScr . flip Javascript Nothing <$> getString
-		0x0F -> f <$> getClosure where f (x, y) = JavaScr $ Javascript x (Just y)
+		0x0D -> JavaScr . Javascript [] <$> getString
+		0x0F -> JavaScr . uncurry (flip Javascript) <$> getClosure
 		0x0E -> Sym <$> getSymbol
 		0x10 -> Int32 <$> getInt32
 		0x12 -> Int64 <$> getInt64
@@ -154,31 +145,44 @@ getDocument = do
 		then return []
 		else (:) <$> getElement <*> getElements
 
-putArray :: Array -> Put
+putArray :: [Value] -> Put
 putArray vs = putDocument (zipWith f [0..] vs)
 	where f i v = U.pack (show i) := v
 
-getArray :: Get Array
+getArray :: Get [Value]
 getArray = map value <$> getDocument
 
 type Subtype = Word8
 
 putBinary :: Subtype -> ByteString -> Put
+putBinary t x = let len = toEnum (length x) in do
+	putInt32 len
+	putTag t
+	putByteString x
+
+getBinary :: Get (Subtype, ByteString)
+getBinary = do
+	len <- getInt32
+	t <- getTag
+	x <- getByteString (fromIntegral len)
+	return (t, x)
+
+{-putBinary :: Subtype -> ByteString -> Put
 -- When Binary subtype (0x02) insert extra length field before bytes
 putBinary t x = let len = toEnum (length x) in do
 	putInt32 $ len + if t == 0x02 then 4 else 0
 	putTag t
 	when (t == 0x02) (putInt32 len)
-	putByteString x
+	putByteString x-}
 
-getBinary :: Get (Subtype, ByteString)
+{-getBinary :: Get (Subtype, ByteString)
 -- When Binary subtype (0x02) there is an extra length field before bytes
 getBinary = do
 	len <- getInt32
 	t <- getTag
 	len' <- if t == 0x02 then getInt32 else return len
 	x <- getByteString (fromIntegral len')
-	return (t, x)
+	return (t, x)-}
 
 putRegex (Regex x y) = putCString x >> putCString y
 getRegex = Regex <$> getCString <*> getCString
@@ -214,3 +218,8 @@ getClosure = do
 	x <- getString
 	y <- getDocument
 	return (x, y)
+
+
+{- Authors: Tony Hannan <tony@10gen.com>
+   Copyright 2010 10gen Inc.
+   Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at: http://www.apache.org/licenses/LICENSE-2.0. Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License. -}
