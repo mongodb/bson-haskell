@@ -1,7 +1,7 @@
 Name: bson
 Version: 0.0.1
 Synopsis: BSON documents are JSON-like objects with a standard binary encoding
-Description: This implements version 1.0 of BSON defined at bsonspec.org
+Description: BSON (short for Binary JSON) is a binary-encoded serialization of JSON-like documents. This implements version 1.0 of the BSON spec, which is defined at http://bsonspec.org.
 Category: Data
 Author: Tony Hannan
 Maintainer: Tony Hannan <tony@10gen.com>
