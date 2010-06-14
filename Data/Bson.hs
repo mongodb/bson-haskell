@@ -8,12 +8,12 @@ module Data.Bson (
 	UString,
 	-- * Document
 	Document, look, lookup, valueAt, at, include, exclude, merge,
-	-- ** Element
-	Element(..), (=:), (=?),
+	-- * Field
+	Field(..), (=:), (=?),
 	Label,
 	-- * Value
 	Value(..), Val(..), fval, cast, typed,
-	-- * Special Bson types
+	-- * Special Bson value types
 	Binary(..), Function(..), UUID(..), MD5(..), UserDefined(..),
 	Regex(..), Javascript(..), Symbol(..), MongoStamp(..), MinMaxKey(..),
 	-- ** ObjectId
@@ -47,8 +47,8 @@ roundTo mult n = fromIntegral (round (n / mult)) * mult
 
 -- * Document
 
-type Document = [Element]
--- ^ A BSON document is a sequence of 'Element's
+type Document = [Field]
+-- ^ A BSON document is a sequence of 'Field's
 
 look :: (Monad m) => Label -> Document -> m Value
 -- ^ Value of field in document, or fail (Nothing) if field not found
@@ -56,7 +56,7 @@ look k doc = maybe notFound (return . value) (find ((k ==) . label) doc) where
 	notFound = fail $ "expected " ++ show k ++ " in " ++ show doc
 
 lookup :: (Val v, Monad m) => Label -> Document -> m v
--- ^ Lookup field in document and cast to expected type. Fail (Nothing) if field not found or value not of expected type.
+-- ^ Lookup value of field in document and cast to expected type. Fail (Nothing) if field not found or value not of expected type.
 lookup k doc = cast =<< look k doc
 
 valueAt :: Label -> Document -> Value
@@ -69,40 +69,40 @@ at k doc = maybe err id (lookup k doc)  where
 	err = error $ "expected (" ++ show k ++ " :: " ++ show (typeOf (undefined :: v)) ++ ") in " ++ show doc
 
 include :: [Label] -> Document -> Document
--- ^ Only include elements of document in key list
+-- ^ Only include fields of document in label list
 include keys doc = mapMaybe (\k -> find ((k ==) . label) doc) keys
 
 exclude :: [Label] -> Document -> Document
--- ^ Exclude elements from document in key list
+-- ^ Exclude fields from document in label list
 exclude keys doc = filter (\(k := _) -> notElem k keys) doc
 
 merge :: Document -> Document -> Document
--- ^ Merge documents with preference given to first one when both have the same label. I.e. for every (k := v) in first argument, if k exists in second argument then replace its value with v, otherwise add (k := v) to second argument
+-- ^ Merge documents with preference given to first one when both have the same label. I.e. for every (k := v) in first argument, if k exists in second argument then replace its value with v, otherwise add (k := v) to second argument.
 merge es doc = foldl f doc es where
 	f doc (k := v) = case findIndex ((k ==) . label) doc of
 		Nothing -> doc ++ [k := v]
 		Just i -> let (x, _ : y) = splitAt i doc in x ++ [k := v] ++ y
 
--- * Element
+-- * Field
 
 infix 0 :=, =:, =?
 
-data Element = (:=) {label :: Label, value :: Value}  deriving (Typeable, Eq)
--- ^ A BSON element is a named value, where the name is a string and the value is a BSON 'Value'
+data Field = (:=) {label :: Label, value :: Value}  deriving (Typeable, Eq)
+-- ^ A BSON field is a named value, where the name (label) is a string and the value is a BSON 'Value'
 
-(=:) :: (Val v) => Label -> v -> Element
--- ^ Element with given label and typed value
+(=:) :: (Val v) => Label -> v -> Field
+-- ^ Field with given label and typed value
 k =: v = k := val v
 
-(=?) :: (Val a) => Label -> Maybe a -> [Element]
--- ^ If Just then return one element list with given label, otherwise return empty list
+(=?) :: (Val a) => Label -> Maybe a -> Document
+-- ^ If Just value then return one field document, otherwise return empty document
 k =? ma = maybeToList (fmap (k =:) ma)
 
-instance Show Element where
+instance Show Field where
 	showsPrec d (k := v) = showParen (d > 0) $ showString (' ' : unpack k) . showString ": " . showsPrec 1 v
 
 type Label = UString
--- ^ The name of a BSON element/field
+-- ^ The name of a BSON field
 
 -- * Value
 

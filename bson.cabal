@@ -1,5 +1,5 @@
 Name: bson
-Version: 0.0.1
+Version: 0.0.2
 Synopsis: BSON documents are JSON-like objects with a standard binary encoding
 Description: BSON (short for Binary JSON) is a binary-encoded serialization of JSON-like documents.
 	.

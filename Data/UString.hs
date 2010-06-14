@@ -1,6 +1,6 @@
 -- | UTF-8 String
 
-{-# LANGUAGE TypeSynonymInstances, StandaloneDeriving #-}
+{-# LANGUAGE TypeSynonymInstances, StandaloneDeriving, DeriveDataTypeable #-}
 
 module Data.UString (
 	UString, u,

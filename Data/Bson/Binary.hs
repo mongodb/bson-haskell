@@ -23,9 +23,9 @@ import Data.Time.Clock.POSIX
 import Control.Applicative ((<$>), (<*>))
 import Control.Monad (when)
 
-putElement :: Element -> Put
+putField :: Field -> Put
 -- ^ Write binary representation of element
-putElement (k := v) = case v of
+putField (k := v) = case v of
 	Float x -> putTL 0x01 >> putDouble x
 	String x -> putTL 0x02 >> putString x
 	Doc x -> putTL 0x03 >> putDocument x
@@ -53,9 +53,9 @@ putElement (k := v) = case v of
  where
 	putTL t = putTag t >> putLabel k
 
-getElement :: Get Element
+getField :: Get Field
 -- ^ Read binary representation of Element
-getElement = do
+getField = do
 	t <- getTag
 	k <- getLabel
 	v <- case t of
@@ -129,7 +129,7 @@ getString = do
 	return (U.fromByteString_ b)
 
 putDocument :: Document -> Put
-putDocument es = let b = runPut (mapM_ putElement es) in do
+putDocument es = let b = runPut (mapM_ putField es) in do
 	putInt32 $ (toEnum . fromEnum) (L.length b + 5)  -- include length and null terminator
 	putLazyByteString b
 	putWord8 0
@@ -139,11 +139,11 @@ getDocument = do
 	len <- subtract 5 <$> getInt32
 	b <- getLazyByteString (fromIntegral len)
 	getWord8
-	return (runGet getElements b)
+	return (runGet getFields b)
  where
-	getElements = isEmpty >>= \done -> if done
+	getFields = isEmpty >>= \done -> if done
 		then return []
-		else (:) <$> getElement <*> getElements
+		else (:) <$> getField <*> getFields
 
 putArray :: [Value] -> Put
 putArray vs = putDocument (zipWith f [0..] vs)
