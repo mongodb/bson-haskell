@@ -12,7 +12,7 @@ module Data.Bson (
 	Field(..), (=:), (=?),
 	Label,
 	-- * Value
-	Value(..), Val(..), fval, cast, typed,
+	Value(..), Val(..), fval, cast, typed, typeOfVal,
 	-- * Special Bson value types
 	Binary(..), Function(..), UUID(..), MD5(..), UserDefined(..),
 	Regex(..), Javascript(..), Symbol(..), MongoStamp(..), MinMaxKey(..),
@@ -168,6 +168,10 @@ typed :: (Val a) => Value -> a
 -- ^ Convert Value to expected type. Error if not that type.
 typed = runIdentity . cast
 
+typeOfVal :: Value -> TypeRep
+-- ^ Type of typed value
+typeOfVal = fval typeOf
+
 -- ** conversion class
 
 -- | Haskell types of this class correspond to BSON value types
@@ -285,7 +289,7 @@ instance Val Symbol where
 instance Val Int32 where
 	val = Int32
 	cast' (Int32 x) = Just x
-	cast' (Int64 x) = mInt32 x
+	cast' (Int64 x) = fitInt x
 	cast' (Float x) = Just (round x)
 	cast' _ = Nothing
 
@@ -297,14 +301,15 @@ instance Val Int64 where
 	cast' _ = Nothing
 
 instance Val Int where
-	val n = maybe (Int64 $ fromIntegral n) Int32 (mInt32 n)
+	val n = maybe (Int64 $ fromIntegral n) Int32 (fitInt n)
 	cast' (Int32 x) = Just (fromIntegral x)
 	cast' (Int64 x) = Just (fromEnum x)
 	cast' (Float x) = Just (round x)
 	cast' _ = Nothing
 
 instance Val Integer where
-	val n = maybe (Int64 . toEnum . fromEnum $ n) Int32 (mInt32 n)
+	val n = maybe (maybe err Int64 $ fitInt n) Int32 (fitInt n)  where
+		err = error $ show n ++ " is too large for Bson Int Value"
 	cast' (Int32 x) = Just (fromIntegral x)
 	cast' (Int64 x) = Just (fromIntegral x)
 	cast' (Float x) = Just (round x)
@@ -320,9 +325,9 @@ instance Val MinMaxKey where
 	cast' (MinMax x) = Just x
 	cast' _ = Nothing
 
-mInt32 :: (Integral n) => n -> Maybe Int32
--- ^ If number fits in 32 bits then cast to Int32, otherwise Nothing
-mInt32 n = if fromIntegral (minBound :: Int32) <= n && n <= fromIntegral (maxBound :: Int32)
+fitInt :: forall n m. (Integral n, Integral m, Bounded m) => n -> Maybe m
+-- ^ If number fits in type m then cast to m, otherwise Nothing
+fitInt n = if fromIntegral (minBound :: m) <= n && n <= fromIntegral (maxBound :: m)
 	then Just (fromIntegral n)
 	else Nothing
 
