@@ -48,7 +48,7 @@ roundTo mult n = fromIntegral (round (n / mult)) * mult
 -- * Document
 
 type Document = [Field]
--- ^ A BSON document is a sequence of 'Field's
+-- ^ A BSON document is a list of 'Field's
 
 look :: (Monad m) => Label -> Document -> m Value
 -- ^ Value of field in document, or fail (Nothing) if field not found
