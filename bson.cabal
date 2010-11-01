@@ -10,6 +10,6 @@ Author: Tony Hannan
 Maintainer: Tony Hannan <tony@10gen.com>
 License: OtherLicense
 License-file: LICENSE
-Build-Depends: base < 5, time, bytestring, unix, network, nano-md5, binary, data-binary-ieee754, compact-string-fix, mtl == 2.*
+Build-Depends: base < 5, time, bytestring, unix, network, nano-md5, binary, data-binary-ieee754, compact-string-fix, mtl >= 2
 Build-Type: Simple
 Exposed-modules: Data.UString, Data.Bson, Data.Bson.Binary
