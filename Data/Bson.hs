@@ -148,7 +148,7 @@ fval f v = case v of
 	ObjId x -> f x
 	Bool x -> f x
 	UTC x -> f x
-	Null -> f ()
+	Null -> f (Nothing :: Maybe Value)
 	RegEx x -> f x
 	JavaScr x -> f x
 	Sym x -> f x
@@ -265,10 +265,17 @@ instance Val POSIXTime where
 	cast' (UTC x) = Just (utcTimeToPOSIXSeconds x)
 	cast' _ = Nothing
 
-instance Val () where
-	val () = Null
-	cast' Null = Just ()
-	cast' _ = Nothing
+instance Val (Maybe Value) where
+	val Nothing = Null
+	val (Just v) = v
+	cast' Null = Just Nothing
+	cast' v = Just (Just v)
+
+instance (Val a) => Val (Maybe a) where
+	val Nothing = Null
+	val (Just a) = val a
+	cast' Null = Just Nothing
+	cast' v = fmap Just (cast' v)
 
 instance Val Regex where
 	val = RegEx
