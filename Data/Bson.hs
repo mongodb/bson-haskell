@@ -2,7 +2,7 @@
 
 Use the GHC language extension /OverloadedStrings/ to automatically convert String literals to UString (UTF8) -}
 
-{-# LANGUAGE OverloadedStrings, TypeSynonymInstances, FlexibleInstances, DeriveDataTypeable, RankNTypes, OverlappingInstances, IncoherentInstances, ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings, TypeSynonymInstances, FlexibleInstances, DeriveDataTypeable, RankNTypes, OverlappingInstances, IncoherentInstances, ScopedTypeVariables, ForeignFunctionInterface #-}
 
 module Data.Bson (
 	UString,
@@ -35,11 +35,17 @@ import Data.ByteString.Char8 (ByteString, pack)
 import Data.Digest.OpenSSL.MD5 (md5sum)
 import Numeric (readHex, showHex)
 import Network.BSD (getHostName)
-import System.Posix.Process (getProcessID)
 import System.IO.Unsafe (unsafePerformIO)
 import Data.IORef
 import Data.Maybe (maybeToList, mapMaybe)
 import Control.Monad.Identity
+
+getProcessID :: IO Int
+-- ^ Get the current process id.
+getProcessID = c_getpid
+
+foreign import ccall unsafe "getpid"
+   c_getpid :: IO Int
 
 roundTo :: (RealFrac a) => a -> a -> a
 -- ^ Round second number to nearest multiple of first number. Eg: roundTo (1/1000) 0.12345 = 0.123
