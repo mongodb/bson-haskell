@@ -4,9 +4,11 @@
 
 module Data.UString (
 	UString, u,
-	module Data.CompactString.UTF8
+	module Data.CompactString.UTF8,
+	module Data.CompactString
 ) where
 
+import Data.CompactString ()  -- Show and IsString instances
 import Data.CompactString.UTF8
 import qualified Data.CompactString as S
 import qualified Data.CompactString.Encodings as E

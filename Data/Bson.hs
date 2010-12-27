@@ -5,7 +5,8 @@ Use the GHC language extension /OverloadedStrings/ to automatically convert Stri
 {-# LANGUAGE OverloadedStrings, TypeSynonymInstances, FlexibleInstances, DeriveDataTypeable, RankNTypes, OverlappingInstances, IncoherentInstances, ScopedTypeVariables, ForeignFunctionInterface #-}
 
 module Data.Bson (
-	UString,
+	-- * UTF-8 String
+	module Data.UString,
 	-- * Document
 	Document, look, lookup, valueAt, at, include, exclude, merge,
 	-- * Field
@@ -25,7 +26,7 @@ import Control.Applicative ((<$>), (<*>))
 import Data.Typeable hiding (cast)
 import Data.Int
 import Data.Word
-import Data.UString (UString, u, unpack)
+import Data.UString (UString, u, unpack)  -- plus Show and IsString instances
 import Data.Time.Clock (UTCTime)
 import Data.Time.Clock.POSIX
 import Data.Time.Format ()  -- for Show and Read instances of UTCTime
