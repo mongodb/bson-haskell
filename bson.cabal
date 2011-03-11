@@ -1,5 +1,5 @@
 Name: bson
-Version: 0.1.2
+Version: 0.1.3
 Synopsis: BSON documents are JSON-like objects with a standard binary encoding
 Description: A BSON Document is an untyped (dynamically type-checked) record. I.e. it is a list of name-value pairs, where a Value is a single sum type with constructors for basic types (Bool, Int, Float, String, and Time), compound types (List, and (embedded) Document), and special types (Binary, Javascript, ObjectId, RegEx, and a few others).
 	.
@@ -10,6 +10,6 @@ Author: Tony Hannan
 Maintainer: Tony Hannan <tony@10gen.com>
 License: OtherLicense
 License-file: LICENSE
-Build-Depends: base < 5, time, bytestring, network, nano-md5, binary, data-binary-ieee754, compact-string-fix, mtl >= 2
+Build-Depends: base < 5, time, bytestring, network, cryptohash, binary, data-binary-ieee754, compact-string-fix, mtl >= 2
 Build-Type: Simple
 Exposed-modules: Data.UString, Data.Bson, Data.Bson.Binary

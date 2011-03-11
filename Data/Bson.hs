@@ -32,8 +32,9 @@ import Data.Time.Clock.POSIX
 import Data.Time.Format ()  -- for Show and Read instances of UTCTime
 import Data.List (find, findIndex)
 import Data.Bits (shift, (.|.))
-import Data.ByteString.Char8 (ByteString, pack)
-import Data.Digest.OpenSSL.MD5 (md5sum)
+import qualified Data.ByteString as BS (ByteString, unpack, take)
+import qualified Data.ByteString.Char8 as BSC (pack)
+import qualified Crypto.Hash.MD5 as MD5 (hash)
 import Numeric (readHex, showHex)
 import Network.BSD (getHostName)
 import System.IO.Unsafe (unsafePerformIO)
@@ -349,15 +350,15 @@ fitInt n = if fromIntegral (minBound :: m) <= n && n <= fromIntegral (maxBound :
 
 -- ** Binary types
 
-newtype Binary = Binary ByteString  deriving (Typeable, Show, Read, Eq)
+newtype Binary = Binary BS.ByteString  deriving (Typeable, Show, Read, Eq)
 
-newtype Function = Function ByteString  deriving (Typeable, Show, Read, Eq)
+newtype Function = Function BS.ByteString  deriving (Typeable, Show, Read, Eq)
 
-newtype UUID = UUID ByteString  deriving (Typeable, Show, Read, Eq)
+newtype UUID = UUID BS.ByteString  deriving (Typeable, Show, Read, Eq)
 
-newtype MD5 = MD5 ByteString  deriving (Typeable, Show, Read, Eq)
+newtype MD5 = MD5 BS.ByteString  deriving (Typeable, Show, Read, Eq)
 
-newtype UserDefined = UserDefined ByteString  deriving (Typeable, Show, Read, Eq)
+newtype UserDefined = UserDefined BS.ByteString  deriving (Typeable, Show, Read, Eq)
 
 -- ** Regex
 
@@ -401,7 +402,7 @@ genObjectId = do
 	return $ Oid time (composite machineId pid inc)
  where
 	machineId :: Word24
-	machineId = unsafePerformIO (fst . head . readHex . take 6 . md5sum . pack <$> getHostName)
+	machineId = unsafePerformIO (makeWord24 . BS.unpack . BS.take 3 . MD5.hash . BSC.pack <$> getHostName)
  	{-# NOINLINE machineId #-}
  	counter :: IORef Word24
  	counter = unsafePerformIO (newIORef 0)
@@ -417,6 +418,9 @@ type Word24 = Word32
 wrap24 :: Word24 -> Word24
 wrap24 n = n `mod` 0x1000000
 
+makeWord24 :: [Word8] -> Word24
+-- ^ Put last 3 bytes into a Word24. Expected to be called on very short list
+makeWord24 = foldl (\a b -> a `shift` 8 .|. fromIntegral b) 0
 
 {- Authors: Tony Hannan <tony@10gen.com>
    Copyright 2010 10gen Inc.
