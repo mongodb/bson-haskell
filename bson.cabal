@@ -13,3 +13,4 @@ License-file: LICENSE
 Build-Depends: base < 5, time, bytestring, network, cryptohash, binary, data-binary-ieee754, compact-string-fix, mtl >= 2
 Build-Type: Simple
 Exposed-modules: Data.UString, Data.Bson, Data.Bson.Binary
+ghc-prof-options: -auto-all

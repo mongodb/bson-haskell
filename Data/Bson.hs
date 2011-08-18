@@ -2,7 +2,7 @@
 
 Use the GHC language extension /OverloadedStrings/ to automatically convert String literals to UString (UTF8) -}
 
-{-# LANGUAGE OverloadedStrings, TypeSynonymInstances, FlexibleInstances, DeriveDataTypeable, RankNTypes, OverlappingInstances, IncoherentInstances, ScopedTypeVariables, ForeignFunctionInterface #-}
+{-# LANGUAGE OverloadedStrings, TypeSynonymInstances, FlexibleInstances, DeriveDataTypeable, RankNTypes, OverlappingInstances, IncoherentInstances, ScopedTypeVariables, ForeignFunctionInterface, BangPatterns #-}
 
 module Data.Bson (
 	-- * UTF-8 String
@@ -95,7 +95,7 @@ merge es doc = foldl f doc es where
 
 infix 0 :=, =:, =?
 
-data Field = (:=) {label :: Label, value :: Value}  deriving (Typeable, Eq)
+data Field = (:=) {label :: !Label, value :: Value}  deriving (Typeable, Eq)
 -- ^ A BSON field is a named value, where the name (label) is a string and the value is a BSON 'Value'
 
 (=:) :: (Val v) => Label -> v -> Field
@@ -363,6 +363,7 @@ newtype UserDefined = UserDefined BS.ByteString  deriving (Typeable, Show, Read,
 -- ** Regex
 
 data Regex = Regex UString UString  deriving (Typeable, Show, Read, Eq)
+-- ^ The first string is the regex pattern, the second is the regex options string. Options are identified by characters, which must be listed in alphabetical order. Valid options are *i* for case insensitive matching, *m* for multiline matching, *x* for verbose mode, *l* to make \\w, \\W, etc. locale dependent, *s* for dotall mode (\".\" matches everything), and *u* to make \\w, \\W, etc. match unicode.
 
 -- ** Javascript
 

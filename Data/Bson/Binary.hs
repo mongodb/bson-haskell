@@ -147,7 +147,7 @@ getDocument = do
 
 putArray :: [Value] -> Put
 putArray vs = putDocument (zipWith f [0..] vs)
-	where f i v = U.pack (show i) := v
+	where f i v = (U.pack $! show i) := v
 
 getArray :: Get [Value]
 getArray = map value <$> getDocument
