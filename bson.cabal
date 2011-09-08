@@ -1,5 +1,5 @@
 Name: bson
-Version: 0.1.4
+Version: 0.1.5
 Synopsis: BSON documents are JSON-like objects with a standard binary encoding
 Description: A BSON Document is an untyped (dynamically type-checked) record. I.e. it is a list of name-value pairs, where a Value is a single sum type with constructors for basic types (Bool, Int, Float, String, and Time), compound types (List, and (embedded) Document), and special types (Binary, Javascript, ObjectId, RegEx, and a few others).
 	.

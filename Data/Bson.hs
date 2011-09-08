@@ -41,6 +41,9 @@ import System.IO.Unsafe (unsafePerformIO)
 import Data.IORef
 import Data.Maybe (maybeToList, mapMaybe)
 import Control.Monad.Identity
+import qualified Text.ParserCombinators.ReadP as R
+import qualified Text.ParserCombinators.ReadPrec as R (lift, readS_to_Prec)
+import Text.Read (Read(..))
 
 getProcessID :: IO Int
 -- ^ Get the current process id.
@@ -52,6 +55,11 @@ foreign import ccall unsafe "getpid"
 roundTo :: (RealFrac a) => a -> a -> a
 -- ^ Round second number to nearest multiple of first number. Eg: roundTo (1/1000) 0.12345 = 0.123
 roundTo mult n = fromIntegral (round (n / mult)) * mult
+
+showHexLen :: (Integral n) => Int -> n -> ShowS
+-- ^ showHex of n padded with leading zeros if necessary to fill d digits
+showHexLen d n = showString (replicate (d - sigDigits) '0') . showHex n
+	where sigDigits = ceiling $ logBase 16 $ fromIntegral n
 
 -- * Document
 
@@ -388,7 +396,13 @@ data ObjectId = Oid Word32 Word64  deriving (Typeable, Eq, Ord)
 -- ^ A BSON ObjectID is a 12-byte value consisting of a 4-byte timestamp (seconds since epoch), a 3-byte machine id, a 2-byte process id, and a 3-byte counter. Note that the timestamp and counter fields must be stored big endian unlike the rest of BSON. This is because they are compared byte-by-byte and we want to ensure a mostly increasing order.
 
 instance Show ObjectId where
-	showsPrec d (Oid x y) = showParen (d > 10) $ showString "Oid " . showHex x . showChar ' ' . showHex y
+	showsPrec _ (Oid x y) = showHexLen 8 x . showHexLen 16 y
+
+instance Read ObjectId where
+	readPrec = do
+		[(x, "")] <- readHex <$> R.lift (R.count 8 R.get)
+		y <- R.readS_to_Prec $ const readHex
+		return (Oid x y)
 
 timestamp :: ObjectId -> UTCTime
 -- ^ Time when objectId was created
