@@ -62,8 +62,9 @@ roundTo mult n = fromIntegral (round (n / mult)) * mult
 
 showHexLen :: (Integral n) => Int -> n -> ShowS
 -- ^ showHex of n padded with leading zeros if necessary to fill d digits
-showHexLen d n = showString (replicate (d - sigDigits) '0') . showHex n
-	where sigDigits = ceiling $ logBase 16 $ fromIntegral n
+showHexLen d n = showString (replicate (d - sigDigits n) '0') . showHex n  where
+	sigDigits 0 = 1
+	sigDigits n' = truncate (logBase 16 $ fromIntegral n') + 1
 
 -- * Document
 
