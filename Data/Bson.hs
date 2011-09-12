@@ -2,7 +2,7 @@
 
 Use the GHC language extension /OverloadedStrings/ to automatically convert String literals to UString (UTF8) -}
 
-{-# LANGUAGE OverloadedStrings, TypeSynonymInstances, FlexibleInstances, DeriveDataTypeable, RankNTypes, OverlappingInstances, IncoherentInstances, ScopedTypeVariables, ForeignFunctionInterface, BangPatterns #-}
+{-# LANGUAGE OverloadedStrings, TypeSynonymInstances, FlexibleInstances, DeriveDataTypeable, RankNTypes, OverlappingInstances, IncoherentInstances, ScopedTypeVariables, ForeignFunctionInterface, BangPatterns, CPP #-}
 
 module Data.Bson (
 	-- * UTF-8 String
@@ -19,6 +19,10 @@ module Data.Bson (
 	Regex(..), Javascript(..), Symbol(..), MongoStamp(..), MinMaxKey(..),
 	-- ** ObjectId
 	ObjectId(..), timestamp, genObjectId
+#ifdef TEST
+    , composite
+    , roundTo
+#endif
 ) where
 
 import Prelude hiding (lookup)
@@ -424,8 +428,9 @@ genObjectId = do
  	{-# NOINLINE counter #-}
  	nextCount :: IO Word24
  	nextCount = atomicModifyIORef counter $ \n -> (wrap24 (n + 1), n)
- 	composite :: Word24 -> Word16 -> Word24 -> Word64
- 	composite mid pid inc = fromIntegral mid `shift` 40 .|. fromIntegral pid `shift` 24 .|. fromIntegral inc
+
+composite :: Word24 -> Word16 -> Word24 -> Word64
+composite mid pid inc = fromIntegral mid `shift` 40 .|. fromIntegral pid `shift` 24 .|. fromIntegral inc
 
 type Word24 = Word32
 -- ^ low 3 bytes only, high byte must be zero
