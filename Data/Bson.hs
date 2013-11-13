@@ -200,6 +200,11 @@ class (Typeable a, Show a, Eq a) => Val a where
 	val :: a -> Value
 	cast' :: Value -> Maybe a
 
+-- | 'Value' is trivially an instance of 'Val'.
+instance Val Value where
+        val   = id
+        cast' = Just
+
 instance Val Double where
 	val = Float
 	cast' (Float x) = Just x
