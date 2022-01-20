@@ -1,5 +1,5 @@
 # End of Life Notice
-The MongoDB bson-haskell is now officially end-of-life (EOL). No further development, bugfixes, enhancements, documentation changes or maintenance will be provided by this project and pull requests will no longer be accepted.
+The MongoDB bson-haskell library is now officially end-of-life (EOL). No further development, bugfixes, enhancements, documentation changes or maintenance will be provided by this project and pull requests will no longer be accepted.
 
 ## About
 
